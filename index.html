@@ -63,7 +63,7 @@ function parseCSV(t){const r=[];let c=[],f="",q=false;
     else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;c.push(f);r.push(c);c=[];f=""}
     else f+=ch}
   if(f||c.length){c.push(f);r.push(c)}return r}
-const clean=s=>(s||"").replace(/[‎‏‪-‮⁦-⁩]/g,"").trim();
+const clean=s=>(s||"").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim();
 const norm=h=>clean(h).toLowerCase().replace(/\s+/g," ");
 // read a value by header name (several possible names); the first matching column wins
 function pick(o,...names){for(const n of names){if(o[n]!==undefined&&o[n]!=="")return o[n]}return ""}
