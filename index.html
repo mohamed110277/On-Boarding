@@ -67,7 +67,7 @@ async function load(){
     const t=await res.text();
     const data=parseCSV(t).filter(r=>r.some(x=>x.trim()));
     const head=data[0].map(h=>h.trim());
-    rows=data.slice(1).map(r=>{const o={};head.forEach((h,i)=>o[h]=(r[i]||"").replace(/[‎‏‪-‮⁦-⁩]/g,"").trim());return o})
+    rows=data.slice(1).map(r=>{const o={};head.forEach((h,i)=>o[h]=(r[i]||"").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim());return o})
       .filter(r=>r["Full Name"]); // count only rows that actually contain courier data
     render();
     $("upd").textContent="Last updated: "+new Date().toLocaleTimeString("en-US")+" • auto-refreshes every minute";
