@@ -40,8 +40,12 @@ th{color:var(--mu);font-weight:600}
 <div class="card">
   <h2>All couriers</h2>
   <div class="tools">
-    <input id="q" placeholder="Search by name / ID / Hub..." oninput="renderTable()">
-    <select id="fs" onchange="renderTable()"></select>
+    <input id="q" placeholder="Search by name / ID / Hub..." oninput="renderTable()" style="min-width:260px">
+    <select id="hf" onchange="renderTable()" aria-label="Hub"></select>
+    <select id="fs" onchange="renderTable()" aria-label="Status">
+      <option value="online" selected>online</option>
+      <option value="offline">offline</option>
+    </select>
   </div>
   <div class="tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
 </div>
@@ -81,14 +85,15 @@ function render(){
   const left=rows.filter(r=>r["Last day of work"]).length;
   const k=[["Total couriers",rows.length],["Online",by("online")],["Offline",by("offline")],["Hold",by("hold")],["Left",left]];
   $("kpis").innerHTML=k.map(([a,b])=>`<div class="card kpi"><span class="mu">${a}</span><b>${b}</b></div>`).join("");
-  const cur=$("fs").value;
-  $("fs").innerHTML='<option value="">All statuses</option>'+cnt(rows,"Status").map(([s])=>`<option${s==cur?" selected":""}>${s}</option>`).join("");
+  const curHub=$("hf").value;
+  const hubs=[...new Set(rows.map(r=>r.Hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${h}</option>`).join("");
   $("th").innerHTML="<tr>"+["Name","Fawry ID","Contractor","Hub","Zone","Status","Reason","Last day","Joined date"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
   renderTable();
 }
 function renderTable(){
-  const q=$("q").value.toLowerCase(),s=$("fs").value;
-  const list=rows.filter(r=>(!s||r.Status==s)&&(!q||[r["Full Name"],r["Fawry ID"],r["Star ID"],r.Hub,r.Zone,r.contractor].join(" ").toLowerCase().includes(q)));
+  const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
+  const list=rows.filter(r=>r.Status.toLowerCase()===s&&(!h||r.Hub===h)&&(!q||[r["Full Name"],r["Fawry ID"],r["Star ID"],r.Hub,r.Zone,r.contractor].join(" ").toLowerCase().includes(q)));
   $("tb").innerHTML=list.map(r=>{const st=r.Status.toLowerCase();const c=["online","offline","hold"].includes(st)?st:"other";
     return`<tr><td>${r["Full Name"]}</td><td>${r["Fawry ID"]}</td><td>${r.contractor}</td><td>${r.Hub}</td><td>${r.Zone}</td><td><span class="tag ${c}">${r.Status||"—"}</span></td><td>${r["Reason for left"]}</td><td>${r["Last day of work"]}</td><td>${r["Joined Date"]}</td></tr>`}).join("")||'<tr><td colspan="9" class="mu">No results</td></tr>';
 }
