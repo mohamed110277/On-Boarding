@@ -9,7 +9,7 @@
 @media(prefers-color-scheme:dark){:root{--bg:#0f1420;--card:#182031;--tx:#e8ecf5;--mu:#94a0ba;--bd:#26304a}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:"Segoe UI",Tahoma,Arial,sans-serif;padding:16px}
-.wrap{max-width:1200px;margin:auto}
+.wrap{max-width:1300px;margin:auto}
 header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:16px}
 h1{font-size:22px;margin:0}
 .mu{color:var(--mu);font-size:13px}
@@ -54,6 +54,7 @@ th{color:var(--mu);font-weight:600}
 const URL_CSV="https://docs.google.com/spreadsheets/d/e/2PACX-1vT3jd7lA_7IVnf4dswY4MG1OvwlSbhb_cxkf_DeHsxXJSN_i7GDOaEME684Q4tp_aug1R4y3fY4Y5j0/pub?output=csv";
 let rows=[];
 const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function parseCSV(t){const r=[];let c=[],f="",q=false;
   for(let i=0;i<t.length;i++){const ch=t[i];
     if(q){if(ch=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=ch}
@@ -62,7 +63,10 @@ function parseCSV(t){const r=[];let c=[],f="",q=false;
     else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;c.push(f);r.push(c);c=[];f=""}
     else f+=ch}
   if(f||c.length){c.push(f);r.push(c)}return r}
-function cnt(arr,key){const m={};arr.forEach(x=>{const k=(x[key]||"").trim();if(k)m[k]=(m[k]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1])}
+const clean=s=>(s||"").replace(/[‎‏‪-‮⁦-⁩]/g,"").trim();
+const norm=h=>clean(h).toLowerCase().replace(/\s+/g," ");
+// read a value by header name (several possible names); the first matching column wins
+function pick(o,...names){for(const n of names){if(o[n]!==undefined&&o[n]!=="")return o[n]}return ""}
 async function load(){
   $("err").style.display="none";
   try{
@@ -70,9 +74,26 @@ async function load(){
     if(!res.ok)throw new Error(res.status);
     const t=await res.text();
     const data=parseCSV(t).filter(r=>r.some(x=>x.trim()));
-    const head=data[0].map(h=>h.trim());
-    rows=data.slice(1).map(r=>{const o={};head.forEach((h,i)=>o[h]=(r[i]||"").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim());return o})
-      .filter(r=>r["Full Name"]); // count only rows that actually contain courier data
+    const head=data[0].map(norm);
+    rows=data.slice(1).map(r=>{
+      const o={};
+      head.forEach((h,i)=>{if(h&&!(h in o))o[h]=clean(r[i])});   // duplicate headers (e.g. OFD): keep the first one
+      return{
+        id:pick(o,"star id"),
+        name:pick(o,"full name","name"),
+        hub:pick(o,"hub"),
+        fawry:pick(o,"star fawry id","fawry id"),
+        joined:pick(o,"joined at","joined date"),
+        vehicle:pick(o,"vehicle"),
+        zone:pick(o,"zone"),
+        contractor:pick(o,"contractor"),
+        senior:pick(o,"senior"),
+        status:pick(o,"status"),
+        reason:pick(o,"reason for left"),
+        comment:pick(o,"comment"),
+        last:pick(o,"last day of work")
+      };
+    }).filter(r=>r.name); // only rows that actually contain courier data
     render();
     $("upd").textContent="Last updated: "+new Date().toLocaleTimeString("en-US")+" • auto-refreshes every minute";
   }catch(e){
@@ -81,21 +102,21 @@ async function load(){
   }
 }
 function render(){
-  const by=s=>rows.filter(r=>r.Status.toLowerCase()===s).length;
-  const left=rows.filter(r=>r["Last day of work"]).length;
+  const by=s=>rows.filter(r=>r.status.toLowerCase()===s).length;
+  const left=rows.filter(r=>r.last).length;
   const k=[["Total couriers",rows.length],["Online",by("online")],["Offline",by("offline")],["Hold",by("hold")],["Left",left]];
   $("kpis").innerHTML=k.map(([a,b])=>`<div class="card kpi"><span class="mu">${a}</span><b>${b}</b></div>`).join("");
   const curHub=$("hf").value;
-  const hubs=[...new Set(rows.map(r=>r.Hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${h}</option>`).join("");
-  $("th").innerHTML="<tr>"+["Name","Fawry ID","Contractor","Hub","Zone","Status","Reason","Last day","Joined date"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
+  const hubs=[...new Set(rows.map(r=>r.hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${esc(h)}</option>`).join("");
+  $("th").innerHTML="<tr>"+["Name","Fawry ID","Contractor","Senior","Vehicle","Hub","Zone","Status","Reason","Comment","Last day","Joined date"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
   renderTable();
 }
 function renderTable(){
   const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
-  const list=rows.filter(r=>r.Status.toLowerCase()===s&&(!h||r.Hub===h)&&(!q||[r["Full Name"],r["Fawry ID"],r["Star ID"],r.Hub,r.Zone,r.contractor].join(" ").toLowerCase().includes(q)));
-  $("tb").innerHTML=list.map(r=>{const st=r.Status.toLowerCase();const c=["online","offline","hold"].includes(st)?st:"other";
-    return`<tr><td>${r["Full Name"]}</td><td>${r["Fawry ID"]}</td><td>${r.contractor}</td><td>${r.Hub}</td><td>${r.Zone}</td><td><span class="tag ${c}">${r.Status||"—"}</span></td><td>${r["Reason for left"]}</td><td>${r["Last day of work"]}</td><td>${r["Joined Date"]}</td></tr>`}).join("")||'<tr><td colspan="9" class="mu">No results</td></tr>';
+  const list=rows.filter(r=>r.status.toLowerCase()===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)));
+  $("tb").innerHTML=list.map(r=>{const st=r.status.toLowerCase();const c=["online","offline","hold"].includes(st)?st:"other";
+    return`<tr><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.senior)}</td><td>${esc(r.vehicle)}</td><td>${esc(r.hub)}</td><td>${esc(r.zone)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${esc(r.reason)}</td><td>${esc(r.comment)}</td><td>${esc(r.last)}</td><td>${esc(r.joined)}</td></tr>`}).join("")||'<tr><td colspan="12" class="mu">No results</td></tr>';
 }
 load();setInterval(load,60000);
 </script>
