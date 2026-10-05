@@ -19,7 +19,9 @@ button.ghost{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
 .kpi b{display:block;font-size:28px;margin-top:4px}
 h2{font-size:15px;margin:0 0 12px}
-.tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.tools{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:14px}
+.tools input,.tools select{width:100%;padding:14px 16px;font-size:16px;border-radius:10px}
+@media(max-width:700px){.tools{grid-template-columns:1fr}}
 input,select{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px;font:inherit}
 .tw{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -38,6 +40,7 @@ tbody tr:hover{background:rgba(59,108,246,.08)}
 .pcard{background:var(--card);border-radius:12px;border-left:5px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.08);padding:20px 22px}
 .pcard .k{display:block;color:var(--lbl);font-weight:700;font-size:14px;margin-bottom:10px}
 .pcard .v{font-size:19px;word-break:break-word}
+.pcard .s{display:block;color:var(--mu);font-size:12px;margin-top:6px}
 </style>
 </head>
 <body>
@@ -54,7 +57,7 @@ tbody tr:hover{background:rgba(59,108,246,.08)}
   <div class="card">
     <h2>All couriers <span class="mu">— click a courier to open the profile</span></h2>
     <div class="tools">
-      <input id="q" placeholder="Search by name / Star ID / Hub..." oninput="renderTable()" style="min-width:260px">
+      <input id="q" placeholder="Search by name / Star ID / Hub..." oninput="renderTable()">
       <select id="hf" onchange="renderTable()" aria-label="Hub"></select>
       <select id="fs" onchange="renderTable()" aria-label="Status">
         <option value="online" selected>online</option>
@@ -103,6 +106,7 @@ async function load(){
       let active=0,absent=0;
       const days=dayIdx.map(i=>clean(r[i]).toLowerCase());
       days.forEach(v=>{if(v==="active")active++;else if(v==="absent")absent++});
+      const ofd=dayIdx.map(i=>head[i+1]==="ofd"?clean(r[i+1]):"");
       return{
         id:pick(o,"star id"),
         name:pick(o,"full name","name"),
@@ -117,7 +121,7 @@ async function load(){
         reason:pick(o,"reason for left"),
         comment:pick(o,"comment"),
         last:pick(o,"last day of work"),
-        active,absent,days
+        active,absent,days,ofd
       };
     }).filter(r=>r.name);
     dayHeads=dayIdx.map(i=>head[i]);
@@ -183,13 +187,17 @@ function showProfile(i){
   const r=rows[i];if(!r)return;
   currentId=r.id;
   const na=v=>v===""||v==null?"N/A":v;
+  const key=new Date().getDate()+" "+MON[new Date().getMonth()];
+  const j=dayHeads.findIndex(h=>{const m=h.match(/^(\d{1,2}) ([a-z]{3})/);return m&&(+m[1])+" "+m[2]===key});
+  const ofdToday=j>=0?r.ofd[j]:"";
   const cards=[
     ["Star ID",r.id],["Full Name",r.name],["Fawry ID",r.fawry],["Contractor",r.contractor],
     ["Senior",r.senior],["Vehicle",r.vehicle],["Hub",r.hub],["Zone",r.zone],
     ["Status",r.status],["Joined Date",r.joined],["Last Day Of Work",r.last],["Reason For Left",r.reason],
-    ["Comment",r.comment],["Active Days",r.active],["Absent Days",r.absent]
+    ["Comment",r.comment],["Active Days",r.active],["Absent Days",r.absent],
+    ["OFD (shipments today)",ofdToday,fmtDate(new Date())]
   ];
-  $("pgrid").innerHTML=cards.map(([k,v])=>`<div class="pcard"><span class="k">${k}</span><span class="v">${esc(na(v))}</span></div>`).join("");
+  $("pgrid").innerHTML=cards.map(([k,v,sub])=>`<div class="pcard"><span class="k">${k}</span><span class="v">${esc(na(v))}</span>${sub?`<span class="s">${esc(sub)}</span>`:""}</div>`).join("");
   $("list").style.display="none";
   $("profile").style.display="block";
   window.scrollTo(0,0);
