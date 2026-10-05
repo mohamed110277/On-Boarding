@@ -143,15 +143,25 @@ function statsFor(date){
   rows.forEach(r=>{const v=r.days[j];if(v==="active")a++;else if(v==="absent")b++});
   return{active:a,absent:b};
 }
-// Joined date can be M/D/YYYY (current sheet), D M YYYY or YYYY-MM-DD
+// Joined At comes in mixed formats: 10/1/2026, 5 Oct 2026, 04-Oct-26, Oct 5 2026, 2026-10-05, 05 10 2026
+function parseJoined(str){
+  const t=String(str||"").trim();
+  if(!t)return null;
+  const yr=v=>{v=+v;return v<100?2000+v:v};
+  const mi=n=>MON.indexOf(n.slice(0,3).toLowerCase());
+  let m=t.match(/^(\d{1,2})[\s\-\/.]+([A-Za-z]{3,})[\s\-\/.,]+(\d{2,4})/);          // 5 Oct 2026 | 04-Oct-26
+  if(m&&mi(m[2])>=0)return{y:yr(m[3]),m:mi(m[2])+1,d:+m[1]};
+  m=t.match(/^([A-Za-z]{3,})[\s\-\/.]+(\d{1,2})[\s\-\/.,]+(\d{2,4})/);               // Oct 5, 2026
+  if(m&&mi(m[1])>=0)return{y:yr(m[3]),m:mi(m[1])+1,d:+m[2]};
+  m=t.match(/^(\d{1,4})[\s\-\/.]+(\d{1,2})[\s\-\/.]+(\d{1,4})/);
+  if(!m)return null;
+  if(m[1].length===4)return{y:+m[1],m:+m[2],d:+m[3]};                                    // 2026-10-05
+  if(/\//.test(t))return{y:yr(m[3]),m:+m[1],d:+m[2]};                                    // 10/5/2026 (M/D/Y)
+  return{y:yr(m[3]),m:+m[2],d:+m[1]};                                                    // 05 10 2026 (D M Y)
+}
 function joinedOn(str,date){
-  const m=String(str||"").trim().match(/^(\d{1,4})[\/\-. ]+(\d{1,2})[\/\-. ]+(\d{1,4})/);
-  if(!m)return false;
-  let y,mo,d;
-  if(m[1].length===4){y=+m[1];mo=+m[2];d=+m[3]}
-  else if(/\//.test(str)){mo=+m[1];d=+m[2];y=+m[3]}
-  else{d=+m[1];mo=+m[2];y=+m[3]}
-  return y===date.getFullYear()&&mo===date.getMonth()+1&&d===date.getDate();
+  const j=parseJoined(str);
+  return !!j&&j.y===date.getFullYear()&&j.m===date.getMonth()+1&&j.d===date.getDate();
 }
 const fmtDate=d=>d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
 function render(){
