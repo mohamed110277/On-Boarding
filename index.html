@@ -132,7 +132,7 @@ function render(){
   const curHub=$("hf").value;
   const hubs=[...new Set(rows.map(r=>r.hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${esc(h)}</option>`).join("");
-  $("th").innerHTML="<tr>"+["Name","Star ID","Fawry ID","Contractor","Senior","Vehicle","Hub","Zone","Status","Active days","Absent days","Last day","Joined date"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
+  $("th").innerHTML="<tr>"+["Star ID","Name","Fawry ID","Contractor","Hub","Status","Active days","Absent days","Joined date","Last day"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
   renderTable();
 }
 function renderTable(){
@@ -142,7 +142,7 @@ function renderTable(){
     if(r.status.toLowerCase()===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)))list.push([r,i]);
   });
   $("tb").innerHTML=list.map(([r,i])=>{const st=r.status.toLowerCase();const c=["online","offline","hold"].includes(st)?st:"other";
-    return`<tr data-i="${i}"><td>${esc(r.name)}</td><td>${esc(r.id)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.senior)}</td><td>${esc(r.vehicle)}</td><td>${esc(r.hub)}</td><td>${esc(r.zone)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.last)}</td><td>${esc(r.joined)}</td></tr>`}).join("")||'<tr><td colspan="13" class="mu">No results</td></tr>';
+    return`<tr data-i="${i}"><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.hub)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.joined)}</td><td>${esc(r.last)}</td></tr>`}).join("")||'<tr><td colspan="10" class="mu">No results</td></tr>';
 }
 $("tb").addEventListener("click",e=>{
   const tr=e.target.closest("tr[data-i]");
