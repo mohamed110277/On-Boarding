@@ -143,6 +143,16 @@ function statsFor(date){
   rows.forEach(r=>{const v=r.days[j];if(v==="active")a++;else if(v==="absent")b++});
   return{active:a,absent:b};
 }
+// Joined date can be M/D/YYYY (current sheet), D M YYYY or YYYY-MM-DD
+function joinedOn(str,date){
+  const m=String(str||"").trim().match(/^(\d{1,4})[\/\-. ]+(\d{1,2})[\/\-. ]+(\d{1,4})/);
+  if(!m)return false;
+  let y,mo,d;
+  if(m[1].length===4){y=+m[1];mo=+m[2];d=+m[3]}
+  else if(/\//.test(str)){mo=+m[1];d=+m[2];y=+m[3]}
+  else{d=+m[1];mo=+m[2];y=+m[3]}
+  return y===date.getFullYear()&&mo===date.getMonth()+1&&d===date.getDate();
+}
 const fmtDate=d=>d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
 function render(){
   const by=s=>rows.filter(r=>r.status.toLowerCase()===s).length;
@@ -161,7 +171,8 @@ function render(){
     ["Absent yesterday",val(sY,"absent"),fmtDate(yest),""],
     ["Active today",val(sT,"active"),fmtDate(today),""],
     ["Absent today",val(sT,"absent"),fmtDate(today),""],
-    ["Change vs yesterday",pct,note,cls]
+    ["Change vs yesterday",pct,note,cls],
+    ["New couriers today",rows.filter(r=>joinedOn(r.joined,today)).length,fmtDate(today),""]
   ];
   $("kpis2").innerHTML=k2.map(([a,b,c,d])=>`<div class="card kpi"><span class="mu">${a}</span><b class="${d}">${b}</b><small>${c}</small></div>`).join("");
   const curHub=$("hf").value;
