@@ -29,6 +29,8 @@ tbody tr{cursor:pointer}
 tbody tr:hover{background:rgba(59,108,246,.08)}
 .tag{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
 .online{background:var(--ok)}.offline{background:var(--bad)}.hold{background:var(--wn)}.other{background:var(--mu)}
+.kpi small{display:block;color:var(--mu);font-size:12px;margin-top:2px}
+.up{color:var(--ok)}.down{color:var(--bad)}
 #err{color:var(--bad);display:none;margin-bottom:12px}
 #profile{display:none}
 #profile h2{font-size:26px;margin:14px 0 16px}
@@ -48,6 +50,7 @@ tbody tr:hover{background:rgba(59,108,246,.08)}
 
 <div id="list">
   <div class="kpis" id="kpis"></div>
+  <div class="kpis" id="kpis2"></div>
   <div class="card">
     <h2>All couriers <span class="mu">— click a courier to open the profile</span></h2>
     <div class="tools">
@@ -70,7 +73,7 @@ tbody tr:hover{background:rgba(59,108,246,.08)}
 </div>
 <script>
 const URL_CSV="https://docs.google.com/spreadsheets/d/e/2PACX-1vT3jd7lA_7IVnf4dswY4MG1OvwlSbhb_cxkf_DeHsxXJSN_i7GDOaEME684Q4tp_aug1R4y3fY4Y5j0/pub?output=csv";
-let rows=[],currentId=null;
+let rows=[],currentId=null,dayHeads=[];
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function parseCSV(t){const r=[];let c=[],f="",q=false;
@@ -98,7 +101,8 @@ async function load(){
       const o={};
       head.forEach((h,i)=>{if(h&&!(h in o))o[h]=clean(r[i])});
       let active=0,absent=0;
-      dayIdx.forEach(i=>{const v=clean(r[i]).toLowerCase();if(v==="active")active++;else if(v==="absent")absent++});
+      const days=dayIdx.map(i=>clean(r[i]).toLowerCase());
+      days.forEach(v=>{if(v==="active")active++;else if(v==="absent")absent++});
       return{
         id:pick(o,"star id"),
         name:pick(o,"full name","name"),
@@ -113,9 +117,10 @@ async function load(){
         reason:pick(o,"reason for left"),
         comment:pick(o,"comment"),
         last:pick(o,"last day of work"),
-        active,absent
+        active,absent,days
       };
     }).filter(r=>r.name);
+    dayHeads=dayIdx.map(i=>head[i]);
     render();
     if(currentId!==null){const i=rows.findIndex(r=>r.id===currentId);if(i>=0)showProfile(i)}
     $("upd").textContent="Last updated: "+new Date().toLocaleTimeString("en-US")+" • auto-refreshes every minute";
@@ -124,11 +129,37 @@ async function load(){
     $("err").textContent="Could not load the sheet ("+e.message+"). Make sure the sheet is published and the file is opened from your device or a hosted site.";
   }
 }
+const MON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+// counts of Active / Absent couriers for one calendar date, read from the matching day column
+function statsFor(date){
+  const key=date.getDate()+" "+MON[date.getMonth()];
+  const j=dayHeads.findIndex(h=>{const m=h.match(/^(\d{1,2}) ([a-z]{3})/);return m&&(+m[1])+" "+m[2]===key});
+  if(j<0)return null;
+  let a=0,b=0;
+  rows.forEach(r=>{const v=r.days[j];if(v==="active")a++;else if(v==="absent")b++});
+  return{active:a,absent:b};
+}
+const fmtDate=d=>d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
 function render(){
   const by=s=>rows.filter(r=>r.status.toLowerCase()===s).length;
   const left=rows.filter(r=>r.last).length;
   const k=[["Total couriers",rows.length],["Online",by("online")],["Offline",by("offline")],["Hold",by("hold")],["Left",left]];
   $("kpis").innerHTML=k.map(([a,b])=>`<div class="card kpi"><span class="mu">${a}</span><b>${b}</b></div>`).join("");
+  const today=new Date(),yest=new Date(today.getTime()-864e5);
+  const sT=statsFor(today),sY=statsFor(yest);
+  const val=(st,k)=>st?st[k]:"—";
+  let pct="—",cls="",note="Active today vs yesterday";
+  if(sT&&sY&&sY.active>0){const p=(sT.active-sY.active)/sY.active*100;
+    pct=(p>0?"▲ +":p<0?"▼ ":"")+p.toFixed(1)+"%";cls=p>0?"up":p<0?"down":"";
+    note=`Active: ${sY.active} → ${sT.active}`}
+  const k2=[
+    ["Active yesterday",val(sY,"active"),fmtDate(yest),""],
+    ["Absent yesterday",val(sY,"absent"),fmtDate(yest),""],
+    ["Active today",val(sT,"active"),fmtDate(today),""],
+    ["Absent today",val(sT,"absent"),fmtDate(today),""],
+    ["Change vs yesterday",pct,note,cls]
+  ];
+  $("kpis2").innerHTML=k2.map(([a,b,c,d])=>`<div class="card kpi"><span class="mu">${a}</span><b class="${d}">${b}</b><small>${c}</small></div>`).join("");
   const curHub=$("hf").value;
   const hubs=[...new Set(rows.map(r=>r.hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${esc(h)}</option>`).join("");
