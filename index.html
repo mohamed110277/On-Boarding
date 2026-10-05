@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Courier onboarding</title>
 <style>
-:root{--bg:#f4f6fb;--card:#fff;--tx:#1b2333;--mu:#6b7690;--bd:#e3e8f2;--pr:#3b6cf6;--ok:#16a34a;--bad:#dc2626;--wn:#f59e0b;--lbl:#e0402f;--accent:#3498db}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1420;--card:#182031;--tx:#e8ecf5;--mu:#94a0ba;--bd:#26304a;--lbl:#ff6b5b}}
+:root{--bg:#e5e7eb;--card:#f3f4f6;--tx:#1f2937;--mu:#6b7280;--bd:#d1d5db;--pr:#4b6bdc;--ok:#16a34a;--bad:#dc2626;--wn:#d97706;--lbl:#dc2626;--accent:#3498db;color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:"Segoe UI",Tahoma,Arial,sans-serif;padding:16px}
 .wrap{max-width:1300px;margin:auto}
@@ -28,10 +27,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:8px 6px;border-bottom:1px solid var(--bd);text-align:center;vertical-align:middle;white-space:nowrap}
 th{color:var(--mu);font-weight:600}
 tbody tr{cursor:pointer}
-tbody tr:hover{background:rgba(59,108,246,.08)}
+tbody tr:hover{background:rgba(75,107,220,.10)}
 .tag{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
 .online{background:var(--ok)}.offline{background:var(--bad)}.hold{background:var(--wn)}.other{background:var(--mu)}
 .kpi small{display:block;color:var(--mu);font-size:12px;margin-top:2px}
+.notice{display:none;background:rgba(245,158,11,.12);border:1px solid var(--wn);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px;line-height:1.7}
 .up{color:var(--ok)}.down{color:var(--bad)}
 #err{color:var(--bad);display:none;margin-bottom:12px}
 #profile{display:none}
@@ -54,6 +54,7 @@ tbody tr:hover{background:rgba(59,108,246,.08)}
 <div id="list">
   <div class="kpis" id="kpis"></div>
   <div class="kpis" id="kpis2"></div>
+  <div class="notice" id="notice"></div>
   <div class="card">
     <h2>All couriers <span class="mu">— click a courier to open the profile</span></h2>
     <div class="tools">
@@ -62,6 +63,7 @@ tbody tr:hover{background:rgba(59,108,246,.08)}
       <select id="fs" onchange="renderTable()" aria-label="Status">
         <option value="online" selected>online</option>
         <option value="offline">offline</option>
+        <option value="hold">hold</option>
       </select>
     </div>
     <div class="tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
@@ -89,6 +91,16 @@ function parseCSV(t){const r=[];let c=[],f="",q=false;
   if(f||c.length){c.push(f);r.push(c)}return r}
 const clean=s=>(s||"").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim();
 const norm=h=>clean(h).toLowerCase().replace(/\s+/g," ");
+// Normalise Status: ignores case / spaces / punctuation and fixes common typos (e.g. "On Hold", "Hole")
+function canonStatus(raw){
+  const t=String(raw||"").toLowerCase().replace(/[^a-z]/g,"");
+  if(!t)return "";
+  if(t==="online")return "online";
+  if(t==="offline")return "offline";
+  if(t.includes("hold")||t==="hole"||t==="hld")return "hold";
+  if(t==="left")return "left";
+  return t;
+}
 function pick(o,...names){for(const n of names){if(o[n]!==undefined&&o[n]!=="")return o[n]}return ""}
 async function load(){
   $("err").style.display="none";
@@ -121,7 +133,8 @@ async function load(){
         reason:pick(o,"reason for left"),
         comment:pick(o,"comment"),
         last:pick(o,"last day of work"),
-        active,absent,days,ofd
+        active,absent,days,ofd,
+        st:canonStatus(pick(o,"status"))
       };
     }).filter(r=>r.name);
     dayHeads=dayIdx.map(i=>head[i]);
@@ -165,8 +178,8 @@ function joinedOn(str,date){
 }
 const fmtDate=d=>d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
 function render(){
-  const by=s=>rows.filter(r=>r.status.toLowerCase()===s).length;
-  const left=rows.filter(r=>r.last).length;
+  const by=s=>rows.filter(r=>r.st===s).length;
+  const left=rows.filter(r=>r.last||r.st==="left").length;
   const k=[["Total couriers",rows.length],["Online",by("online")],["Offline",by("offline")],["Hold",by("hold")],["Left",left]];
   $("kpis").innerHTML=k.map(([a,b])=>`<div class="card kpi"><span class="mu">${a}</span><b>${b}</b></div>`).join("");
   const today=new Date(),yest=new Date(today.getTime()-864e5);
@@ -185,6 +198,21 @@ function render(){
     ["New couriers today",rows.filter(r=>joinedOn(r.joined,today)).length,fmtDate(today),""]
   ];
   $("kpis2").innerHTML=k2.map(([a,b,c,d])=>`<div class="card kpi"><span class="mu">${a}</span><b class="${d}">${b}</b><small>${c}</small></div>`).join("");
+  // data check: shows anything in the sheet the dashboard had to guess about
+  const tally=f=>{const m={};rows.forEach(r=>{const k=f(r);if(k)m[k]=(m[k]||0)+1});return Object.entries(m)};
+  const known=["online","offline","hold","left"];
+  const unknown=tally(r=>r.st&&!known.includes(r.st)?`"${r.status}"`:"");
+  const fixed=tally(r=>known.includes(r.st)&&r.status.toLowerCase().trim()!==r.st?`"${r.status}" → ${r.st}`:"");
+  const noStatus=rows.filter(r=>!r.st).length;
+  const idCount={};rows.forEach(r=>{if(r.id)idCount[r.id]=(idCount[r.id]||0)+1});
+  const dups=Object.entries(idCount).filter(([,c])=>c>1);
+  const msgs=[];
+  if(unknown.length)msgs.push("⚠️ Unrecognized status (not counted in any card): "+unknown.map(([k,c])=>`${esc(k)} ×${c}`).join(", "));
+  if(fixed.length)msgs.push("ℹ️ Status read as: "+fixed.map(([k,c])=>`${esc(k)} ×${c}`).join(", ")+" — please correct it in the sheet");
+  if(noStatus)msgs.push(`ℹ️ ${noStatus} courier(s) have an empty Status, so they are not shown under Online / Offline / Hold`);
+  if(dups.length)msgs.push("⚠️ Duplicate Star ID: "+dups.map(([k,c])=>`${esc(k)} ×${c}`).join(", "));
+  $("notice").style.display=msgs.length?"block":"none";
+  $("notice").innerHTML=msgs.join("<br>");
   const curHub=$("hf").value;
   const hubs=[...new Set(rows.map(r=>r.hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${esc(h)}</option>`).join("");
@@ -195,9 +223,9 @@ function renderTable(){
   const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
   const list=[];
   rows.forEach((r,i)=>{
-    if(r.status.toLowerCase()===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)))list.push([r,i]);
+    if(r.st===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)))list.push([r,i]);
   });
-  $("tb").innerHTML=list.map(([r,i])=>{const st=r.status.toLowerCase();const c=["online","offline","hold"].includes(st)?st:"other";
+  $("tb").innerHTML=list.map(([r,i])=>{const st=r.st;const c=["online","offline","hold"].includes(st)?st:"other";
     return`<tr data-i="${i}"><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.hub)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.joined)}</td><td>${esc(r.last)}</td></tr>`}).join("")||'<tr><td colspan="10" class="mu">No results</td></tr>';
 }
 $("tb").addEventListener("click",e=>{
