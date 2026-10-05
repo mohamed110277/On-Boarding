@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Courier onboarding</title>
 <style>
-:root{--bg:#f4f6fb;--card:#fff;--tx:#1b2333;--mu:#6b7690;--bd:#e3e8f2;--pr:#3b6cf6;--ok:#16a34a;--bad:#dc2626;--wn:#f59e0b}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1420;--card:#182031;--tx:#e8ecf5;--mu:#94a0ba;--bd:#26304a}}
+:root{--bg:#f4f6fb;--card:#fff;--tx:#1b2333;--mu:#6b7690;--bd:#e3e8f2;--pr:#3b6cf6;--ok:#16a34a;--bad:#dc2626;--wn:#f59e0b;--lbl:#e0402f;--accent:#3498db}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1420;--card:#182031;--tx:#e8ecf5;--mu:#94a0ba;--bd:#26304a;--lbl:#ff6b5b}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:"Segoe UI",Tahoma,Arial,sans-serif;padding:16px}
 .wrap{max-width:1300px;margin:auto}
@@ -14,6 +14,7 @@ header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:cen
 h1{font-size:22px;margin:0}
 .mu{color:var(--mu);font-size:13px}
 button{background:var(--pr);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
+button.ghost{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
 .kpi b{display:block;font-size:28px;margin-top:4px}
@@ -24,9 +25,17 @@ input,select{background:var(--card);color:var(--tx);border:1px solid var(--bd);b
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
 th{color:var(--mu);font-weight:600}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:rgba(59,108,246,.08)}
 .tag{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
 .online{background:var(--ok)}.offline{background:var(--bad)}.hold{background:var(--wn)}.other{background:var(--mu)}
 #err{color:var(--bad);display:none;margin-bottom:12px}
+#profile{display:none}
+#profile h2{font-size:26px;margin:14px 0 16px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.pcard{background:var(--card);border-radius:12px;border-left:5px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.08);padding:20px 22px}
+.pcard .k{display:block;color:var(--lbl);font-weight:700;font-size:14px;margin-bottom:10px}
+.pcard .v{font-size:19px;word-break:break-word}
 </style>
 </head>
 <body>
@@ -36,23 +45,32 @@ th{color:var(--mu);font-weight:600}
   <button onclick="load()">🔄 Refresh</button>
 </header>
 <div id="err"></div>
-<div class="kpis" id="kpis"></div>
-<div class="card">
-  <h2>All couriers</h2>
-  <div class="tools">
-    <input id="q" placeholder="Search by name / ID / Hub..." oninput="renderTable()" style="min-width:260px">
-    <select id="hf" onchange="renderTable()" aria-label="Hub"></select>
-    <select id="fs" onchange="renderTable()" aria-label="Status">
-      <option value="online" selected>online</option>
-      <option value="offline">offline</option>
-    </select>
+
+<div id="list">
+  <div class="kpis" id="kpis"></div>
+  <div class="card">
+    <h2>All couriers <span class="mu">— click a courier to open the profile</span></h2>
+    <div class="tools">
+      <input id="q" placeholder="Search by name / Star ID / Hub..." oninput="renderTable()" style="min-width:260px">
+      <select id="hf" onchange="renderTable()" aria-label="Hub"></select>
+      <select id="fs" onchange="renderTable()" aria-label="Status">
+        <option value="online" selected>online</option>
+        <option value="offline">offline</option>
+      </select>
+    </div>
+    <div class="tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
   </div>
-  <div class="tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
+</div>
+
+<div id="profile">
+  <button class="ghost" onclick="closeProfile()">← Back to list</button>
+  <h2>Star Profile Details</h2>
+  <div class="pgrid" id="pgrid"></div>
 </div>
 </div>
 <script>
 const URL_CSV="https://docs.google.com/spreadsheets/d/e/2PACX-1vT3jd7lA_7IVnf4dswY4MG1OvwlSbhb_cxkf_DeHsxXJSN_i7GDOaEME684Q4tp_aug1R4y3fY4Y5j0/pub?output=csv";
-let rows=[];
+let rows=[],currentId=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function parseCSV(t){const r=[];let c=[],f="",q=false;
@@ -65,7 +83,6 @@ function parseCSV(t){const r=[];let c=[],f="",q=false;
   if(f||c.length){c.push(f);r.push(c)}return r}
 const clean=s=>(s||"").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim();
 const norm=h=>clean(h).toLowerCase().replace(/\s+/g," ");
-// read a value by header name (several possible names); the first matching column wins
 function pick(o,...names){for(const n of names){if(o[n]!==undefined&&o[n]!=="")return o[n]}return ""}
 async function load(){
   $("err").style.display="none";
@@ -75,9 +92,13 @@ async function load(){
     const t=await res.text();
     const data=parseCSV(t).filter(r=>r.some(x=>x.trim()));
     const head=data[0].map(norm);
+    // day columns look like "1 oct", "24 sep" ... (the OFD / Total OFD columns are ignored)
+    const dayIdx=head.map((h,i)=>/^\d{1,2} [a-z]{3,}$/.test(h)?i:-1).filter(i=>i>=0);
     rows=data.slice(1).map(r=>{
       const o={};
-      head.forEach((h,i)=>{if(h&&!(h in o))o[h]=clean(r[i])});   // duplicate headers (e.g. OFD): keep the first one
+      head.forEach((h,i)=>{if(h&&!(h in o))o[h]=clean(r[i])});
+      let active=0,absent=0;
+      dayIdx.forEach(i=>{const v=clean(r[i]).toLowerCase();if(v==="active")active++;else if(v==="absent")absent++});
       return{
         id:pick(o,"star id"),
         name:pick(o,"full name","name"),
@@ -91,10 +112,12 @@ async function load(){
         status:pick(o,"status"),
         reason:pick(o,"reason for left"),
         comment:pick(o,"comment"),
-        last:pick(o,"last day of work")
+        last:pick(o,"last day of work"),
+        active,absent
       };
-    }).filter(r=>r.name); // only rows that actually contain courier data
+    }).filter(r=>r.name);
     render();
+    if(currentId!==null){const i=rows.findIndex(r=>r.id===currentId);if(i>=0)showProfile(i)}
     $("upd").textContent="Last updated: "+new Date().toLocaleTimeString("en-US")+" • auto-refreshes every minute";
   }catch(e){
     $("err").style.display="block";
@@ -109,14 +132,41 @@ function render(){
   const curHub=$("hf").value;
   const hubs=[...new Set(rows.map(r=>r.hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${esc(h)}</option>`).join("");
-  $("th").innerHTML="<tr>"+["Name","Fawry ID","Contractor","Senior","Vehicle","Hub","Zone","Status","Reason","Comment","Last day","Joined date"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
+  $("th").innerHTML="<tr>"+["Name","Star ID","Fawry ID","Contractor","Senior","Vehicle","Hub","Zone","Status","Active days","Absent days","Last day","Joined date"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
   renderTable();
 }
 function renderTable(){
   const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
-  const list=rows.filter(r=>r.status.toLowerCase()===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)));
-  $("tb").innerHTML=list.map(r=>{const st=r.status.toLowerCase();const c=["online","offline","hold"].includes(st)?st:"other";
-    return`<tr><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.senior)}</td><td>${esc(r.vehicle)}</td><td>${esc(r.hub)}</td><td>${esc(r.zone)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${esc(r.reason)}</td><td>${esc(r.comment)}</td><td>${esc(r.last)}</td><td>${esc(r.joined)}</td></tr>`}).join("")||'<tr><td colspan="12" class="mu">No results</td></tr>';
+  const list=[];
+  rows.forEach((r,i)=>{
+    if(r.status.toLowerCase()===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)))list.push([r,i]);
+  });
+  $("tb").innerHTML=list.map(([r,i])=>{const st=r.status.toLowerCase();const c=["online","offline","hold"].includes(st)?st:"other";
+    return`<tr data-i="${i}"><td>${esc(r.name)}</td><td>${esc(r.id)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.senior)}</td><td>${esc(r.vehicle)}</td><td>${esc(r.hub)}</td><td>${esc(r.zone)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.last)}</td><td>${esc(r.joined)}</td></tr>`}).join("")||'<tr><td colspan="13" class="mu">No results</td></tr>';
+}
+$("tb").addEventListener("click",e=>{
+  const tr=e.target.closest("tr[data-i]");
+  if(tr)showProfile(+tr.dataset.i);
+});
+function showProfile(i){
+  const r=rows[i];if(!r)return;
+  currentId=r.id;
+  const na=v=>v===""||v==null?"N/A":v;
+  const cards=[
+    ["Star ID",r.id],["Full Name",r.name],["Fawry ID",r.fawry],["Contractor",r.contractor],
+    ["Senior",r.senior],["Vehicle",r.vehicle],["Hub",r.hub],["Zone",r.zone],
+    ["Status",r.status],["Joined Date",r.joined],["Last Day Of Work",r.last],["Reason For Left",r.reason],
+    ["Comment",r.comment],["Active Days",r.active],["Absent Days",r.absent]
+  ];
+  $("pgrid").innerHTML=cards.map(([k,v])=>`<div class="pcard"><span class="k">${k}</span><span class="v">${esc(na(v))}</span></div>`).join("");
+  $("list").style.display="none";
+  $("profile").style.display="block";
+  window.scrollTo(0,0);
+}
+function closeProfile(){
+  currentId=null;
+  $("profile").style.display="none";
+  $("list").style.display="block";
 }
 load();setInterval(load,60000);
 </script>
