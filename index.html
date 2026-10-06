@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Courier onboarding</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%233b6cf6'/%3E%3Crect%20x='13'%20y='34'%20width='10'%20height='17'%20rx='2.5'%20fill='%23fff'/%3E%3Crect%20x='27'%20y='22'%20width='10'%20height='29'%20rx='2.5'%20fill='%23fff'/%3E%3Crect%20x='41'%20y='12'%20width='10'%20height='39'%20rx='2.5'%20fill='%23fff'/%3E%3C/svg%3E">
 <style>
 :root{--bg:#e5e7eb;--card:#f3f4f6;--tx:#1f2937;--mu:#6b7280;--bd:#d1d5db;--pr:#4b6bdc;--ok:#16a34a;--bad:#dc2626;--wn:#d97706;--lbl:#dc2626;--accent:#3498db;color-scheme:light}
 *{box-sizing:border-box}
@@ -31,9 +32,12 @@ tbody tr:hover{background:rgba(75,107,220,.10)}
 .tag{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
 .online{background:var(--ok)}.offline{background:var(--bad)}.hold{background:var(--wn)}.other{background:var(--mu)}
 .kpi small{display:block;color:var(--mu);font-size:12px;margin-top:2px}
-.notice{display:none;background:rgba(245,158,11,.12);border:1px solid var(--wn);border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:13px;line-height:1.7}
 .up{color:var(--ok)}.down{color:var(--bad)}
 #err{color:var(--bad);display:none;margin-bottom:12px}
+.sbox{position:relative}
+.sbox input{padding-right:48px}
+.clr{display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;color:var(--mu);border-radius:50%;padding:6px 10px;font-size:16px;line-height:1}
+.clr:hover{background:var(--bd);color:var(--tx)}
 #profile{display:none}
 #profile h2{font-size:26px;margin:14px 0 16px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
@@ -54,11 +58,10 @@ tbody tr:hover{background:rgba(75,107,220,.10)}
 <div id="list">
   <div class="kpis" id="kpis"></div>
   <div class="kpis" id="kpis2"></div>
-  <div class="notice" id="notice"></div>
   <div class="card">
     <h2>All couriers <span class="mu">— click a courier to open the profile</span></h2>
     <div class="tools">
-      <input id="q" placeholder="Search by name / Star ID / Hub..." oninput="renderTable()">
+      <div class="sbox"><input id="q" placeholder="Search by name / Star ID / Hub..." oninput="renderTable()"><button class="clr" id="clr" type="button" onclick="clearSearch()" aria-label="Clear search" title="Clear search">✕</button></div>
       <select id="hf" onchange="renderTable()" aria-label="Hub"></select>
       <select id="fs" onchange="renderTable()" aria-label="Status">
         <option value="online" selected>online</option>
@@ -66,6 +69,7 @@ tbody tr:hover{background:rgba(75,107,220,.10)}
         <option value="hold">hold</option>
       </select>
     </div>
+    <div class="mu" id="cnt" style="margin-bottom:8px"></div>
     <div class="tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
   </div>
 </div>
@@ -198,35 +202,26 @@ function render(){
     ["New couriers today",rows.filter(r=>joinedOn(r.joined,today)).length,fmtDate(today),""]
   ];
   $("kpis2").innerHTML=k2.map(([a,b,c,d])=>`<div class="card kpi"><span class="mu">${a}</span><b class="${d}">${b}</b><small>${c}</small></div>`).join("");
-  // data check: shows anything in the sheet the dashboard had to guess about
-  const tally=f=>{const m={};rows.forEach(r=>{const k=f(r);if(k)m[k]=(m[k]||0)+1});return Object.entries(m)};
-  const known=["online","offline","hold","left"];
-  const unknown=tally(r=>r.st&&!known.includes(r.st)?`"${r.status}"`:"");
-  const fixed=tally(r=>known.includes(r.st)&&r.status.toLowerCase().trim()!==r.st?`"${r.status}" → ${r.st}`:"");
-  const noStatus=rows.filter(r=>!r.st).length;
-  const idCount={};rows.forEach(r=>{if(r.id)idCount[r.id]=(idCount[r.id]||0)+1});
-  const dups=Object.entries(idCount).filter(([,c])=>c>1);
-  const msgs=[];
-  if(unknown.length)msgs.push("⚠️ Unrecognized status (not counted in any card): "+unknown.map(([k,c])=>`${esc(k)} ×${c}`).join(", "));
-  if(fixed.length)msgs.push("ℹ️ Status read as: "+fixed.map(([k,c])=>`${esc(k)} ×${c}`).join(", ")+" — please correct it in the sheet");
-  if(noStatus)msgs.push(`ℹ️ ${noStatus} courier(s) have an empty Status, so they are not shown under Online / Offline / Hold`);
-  if(dups.length)msgs.push("⚠️ Duplicate Star ID: "+dups.map(([k,c])=>`${esc(k)} ×${c}`).join(", "));
-  $("notice").style.display=msgs.length?"block":"none";
-  $("notice").innerHTML=msgs.join("<br>");
   const curHub=$("hf").value;
   const hubs=[...new Set(rows.map(r=>r.hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${esc(h)}</option>`).join("");
-  $("th").innerHTML="<tr>"+["Star ID","Name","Fawry ID","Contractor","Hub","Status","Active days","Absent days","Joined date","Last day"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
+  $("th").innerHTML="<tr>"+["Star ID","Name","Fawry ID","Contractor","Hub","Status","Active days","Absent days","Joined date"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
   renderTable();
 }
+function clearSearch(){$("q").value="";renderTable();$("q").focus()}
 function renderTable(){
+  $("clr").style.display=$("q").value?"block":"none";
   const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
   const list=[];
   rows.forEach((r,i)=>{
     if(r.st===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)))list.push([r,i]);
   });
+  list.sort((x,y)=>y[0].active-x[0].active||x[0].absent-y[0].absent||x[0].name.localeCompare(y[0].name));
+  const total=list.length,LIMIT=20;
+  $("cnt").textContent=`Showing the top ${Math.min(LIMIT,total)} of ${total} couriers, ranked by Active days`;
+  list.length=Math.min(LIMIT,total);
   $("tb").innerHTML=list.map(([r,i])=>{const st=r.st;const c=["online","offline","hold"].includes(st)?st:"other";
-    return`<tr data-i="${i}"><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.hub)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.joined)}</td><td>${esc(r.last)}</td></tr>`}).join("")||'<tr><td colspan="10" class="mu">No results</td></tr>';
+    return`<tr data-i="${i}"><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.hub)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.joined)}</td></tr>`}).join("")||'<tr><td colspan="9" class="mu">No results</td></tr>';
 }
 $("tb").addEventListener("click",e=>{
   const tr=e.target.closest("tr[data-i]");
