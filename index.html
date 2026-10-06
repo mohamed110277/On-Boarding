@@ -34,6 +34,267 @@ tbody tr:hover{background:rgba(75,107,220,.10)}
 .kpi small{display:block;color:var(--mu);font-size:12px;margin-top:2px}
 .up{color:var(--ok)}.down{color:var(--bad)}
 #err{color:var(--bad);display:none;margin-bottom:12px}
+.tools{align-items:end}
+.fcol{display:flex;flex-direction:column;gap:8px}
+.clearbtn{align-self:flex-end;background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:6px 14px;font-size:13px}
+.clearbtn:hover{background:var(--bd)}
+.sbox{position:relative}
+.sbox input{padding-right:48px}
+.clr{display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;color:var(--mu);border-radius:50%;padding:6px 10px;font-size:16px;line-height:1}
+.clr:hover{background:var(--bd);color:var(--tx)}
+#profile{display:none}
+#profile h2{font-size:26px;margin:14px 0 16px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.pcard{background:var(--card);border-radius:12px;border-left:5px solid var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.08);padding:20px 22px}
+.pcard .k{display:block;color:var(--lbl);font-weight:700;font-size:14px;margin-bottom:10px}
+.pcard .v{font-size:19px;word-break:break-word}
+.pcard .s{display:block;color:var(--mu);font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div><h1>📊 Courier onboarding</h1><div class="mu" id="upd">Loading...</div></div>
+  <button onclick="load()">🔄 Refresh</button>
+</header>
+<div id="err"></div>
+
+<div id="list">
+  <div class="kpis" id="kpis"></div>
+  <div class="kpis" id="kpis2"></div>
+  <div class="card">
+    <h2>All couriers <span class="mu">— click a courier to open the profile</span></h2>
+    <div class="tools">
+      <div class="sbox"><input id="q" placeholder="Search by name / Star ID / Hub..." oninput="renderTable()"><button class="clr" id="clr" type="button" onclick="clearSearch()" aria-label="Clear search" title="Clear search">✕</button></div>
+      <select id="hf" onchange="renderTable()" aria-label="Hub"></select>
+      <div class="fcol"><button class="clearbtn" type="button" onclick="clearAll()" title="Clear search and Hub filter">✕ Clear</button><select id="fs" onchange="renderTable()" aria-label="Status">
+        <option value="online" selected>online</option>
+        <option value="offline">offline</option>
+        <option value="hold">hold</option>
+      </select></div>
+    </div>
+    <div class="mu" id="cnt" style="margin-bottom:8px"></div>
+    <div class="tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>
+  </div>
+</div>
+
+<div id="profile">
+  <button class="ghost" onclick="closeProfile()">← Back to list</button>
+  <h2>Star Profile Details</h2>
+  <div class="pgrid" id="pgrid"></div>
+</div>
+</div>
+<script>
+const URL_CSV="https://docs.google.com/spreadsheets/d/e/2PACX-1vT3jd7lA_7IVnf4dswY4MG1OvwlSbhb_cxkf_DeHsxXJSN_i7GDOaEME684Q4tp_aug1R4y3fY4Y5j0/pub?output=csv";
+let rows=[],currentId=null,dayHeads=[];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function parseCSV(t){const r=[];let c=[],f="",q=false;
+  for(let i=0;i<t.length;i++){const ch=t[i];
+    if(q){if(ch=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=ch}
+    else if(ch=='"')q=true;
+    else if(ch==','){c.push(f);f=""}
+    else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;c.push(f);r.push(c);c=[];f=""}
+    else f+=ch}
+  if(f||c.length){c.push(f);r.push(c)}return r}
+const clean=s=>(s||"").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,"").trim();
+const norm=h=>clean(h).toLowerCase().replace(/\s+/g," ");
+// Normalise Status: ignores case / spaces / punctuation and fixes common typos (e.g. "On Hold", "Hole")
+function canonStatus(raw){
+  const t=String(raw||"").toLowerCase().replace(/[^a-z]/g,"");
+  if(!t)return "";
+  if(t==="online")return "online";
+  if(t==="offline")return "offline";
+  if(t.includes("hold")||t==="hole"||t==="hld")return "hold";
+  if(t==="left")return "left";
+  return t;
+}
+function pick(o,...names){for(const n of names){if(o[n]!==undefined&&o[n]!=="")return o[n]}return ""}
+async function load(){
+  $("err").style.display="none";
+  try{
+    const res=await fetch(URL_CSV+"&t="+Date.now());
+    if(!res.ok)throw new Error(res.status);
+    const t=await res.text();
+    const data=parseCSV(t).filter(r=>r.some(x=>x.trim()));
+    const head=data[0].map(norm);
+    // day columns look like "1 oct", "24 sep" ... (the OFD / Total OFD columns are ignored)
+    const dayIdx=head.map((h,i)=>/^\d{1,2} [a-z]{3,}$/.test(h)?i:-1).filter(i=>i>=0);
+    rows=data.slice(1).map(r=>{
+      const o={};
+      head.forEach((h,i)=>{if(h&&!(h in o))o[h]=clean(r[i])});
+      let active=0,absent=0;
+      const days=dayIdx.map(i=>clean(r[i]).toLowerCase());
+      days.forEach(v=>{if(v==="active")active++;else if(v==="absent")absent++});
+      const ofd=dayIdx.map(i=>head[i+1]==="ofd"?clean(r[i+1]):"");
+      return{
+        id:pick(o,"star id"),
+        name:pick(o,"full name","name"),
+        hub:pick(o,"hub"),
+        fawry:pick(o,"star fawry id","fawry id"),
+        joined:pick(o,"joined at","joined date"),
+        vehicle:pick(o,"vehicle"),
+        zone:pick(o,"zone"),
+        contractor:pick(o,"contractor"),
+        senior:pick(o,"senior"),
+        status:pick(o,"status"),
+        reason:pick(o,"reason for left"),
+        comment:pick(o,"comment"),
+        last:pick(o,"last day of work"),
+        active,absent,days,ofd,
+        st:canonStatus(pick(o,"status"))
+      };
+    }).filter(r=>r.name);
+    dayHeads=dayIdx.map(i=>head[i]);
+    render();
+    if(currentId!==null){const i=rows.findIndex(r=>r.id===currentId);if(i>=0)showProfile(i)}
+    $("upd").textContent="Last updated: "+new Date().toLocaleTimeString("en-US")+" • auto-refreshes every minute";
+  }catch(e){
+    $("err").style.display="block";
+    $("err").textContent="Could not load the sheet ("+e.message+"). Make sure the sheet is published and the file is opened from your device or a hosted site.";
+  }
+}
+const MON=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+// counts of Active / Absent couriers for one calendar date, read from the matching day column
+function statsFor(date){
+  const key=date.getDate()+" "+MON[date.getMonth()];
+  const j=dayHeads.findIndex(h=>{const m=h.match(/^(\d{1,2}) ([a-z]{3})/);return m&&(+m[1])+" "+m[2]===key});
+  if(j<0)return null;
+  let a=0,b=0;
+  rows.forEach(r=>{const v=r.days[j];if(v==="active")a++;else if(v==="absent")b++});
+  return{active:a,absent:b};
+}
+// Joined At comes in mixed formats: 10/1/2026, 5 Oct 2026, 04-Oct-26, Oct 5 2026, 2026-10-05, 05 10 2026
+function parseJoined(str){
+  const t=String(str||"").trim();
+  if(!t)return null;
+  const yr=v=>{v=+v;return v<100?2000+v:v};
+  const mi=n=>MON.indexOf(n.slice(0,3).toLowerCase());
+  let m=t.match(/^(\d{1,2})[\s\-\/.]+([A-Za-z]{3,})[\s\-\/.,]+(\d{2,4})/);          // 5 Oct 2026 | 04-Oct-26
+  if(m&&mi(m[2])>=0)return{y:yr(m[3]),m:mi(m[2])+1,d:+m[1]};
+  m=t.match(/^([A-Za-z]{3,})[\s\-\/.]+(\d{1,2})[\s\-\/.,]+(\d{2,4})/);               // Oct 5, 2026
+  if(m&&mi(m[1])>=0)return{y:yr(m[3]),m:mi(m[1])+1,d:+m[2]};
+  m=t.match(/^(\d{1,4})[\s\-\/.]+(\d{1,2})[\s\-\/.]+(\d{1,4})/);
+  if(!m)return null;
+  if(m[1].length===4)return{y:+m[1],m:+m[2],d:+m[3]};                                    // 2026-10-05
+  if(/\//.test(t))return{y:yr(m[3]),m:+m[1],d:+m[2]};                                    // 10/5/2026 (M/D/Y)
+  return{y:yr(m[3]),m:+m[2],d:+m[1]};                                                    // 05 10 2026 (D M Y)
+}
+function joinedOn(str,date){
+  const j=parseJoined(str);
+  return !!j&&j.y===date.getFullYear()&&j.m===date.getMonth()+1&&j.d===date.getDate();
+}
+const fmtDate=d=>d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"});
+function render(){
+  const by=s=>rows.filter(r=>r.st===s).length;
+  const left=rows.filter(r=>r.last||r.st==="left").length;
+  const k=[["Total couriers",rows.length],["Online",by("online")],["Offline",by("offline")],["Hold",by("hold")],["Left",left]];
+  $("kpis").innerHTML=k.map(([a,b])=>`<div class="card kpi"><span class="mu">${a}</span><b>${b}</b></div>`).join("");
+  const today=new Date(),yest=new Date(today.getTime()-864e5);
+  const sT=statsFor(today),sY=statsFor(yest);
+  const val=(st,k)=>st?st[k]:"—";
+  let pct="—",cls="",note="Active today vs yesterday";
+  if(sT&&sY&&sY.active>0){const p=(sT.active-sY.active)/sY.active*100;
+    pct=(p>0?"▲ +":p<0?"▼ ":"")+p.toFixed(1)+"%";cls=p>0?"up":p<0?"down":"";
+    note=`Active: ${sY.active} → ${sT.active}`}
+  const k2=[
+    ["Active yesterday",val(sY,"active"),fmtDate(yest),""],
+    ["Absent yesterday",val(sY,"absent"),fmtDate(yest),""],
+    ["Active today",val(sT,"active"),fmtDate(today),""],
+    ["Absent today",val(sT,"absent"),fmtDate(today),""],
+    ["Change vs yesterday",pct,note,cls],
+    ["New couriers today",rows.filter(r=>joinedOn(r.joined,today)).length,fmtDate(today),""]
+  ];
+  $("kpis2").innerHTML=k2.map(([a,b,c,d])=>`<div class="card kpi"><span class="mu">${a}</span><b class="${d}">${b}</b><small>${c}</small></div>`).join("");
+  const curHub=$("hf").value;
+  const hubs=[...new Set(rows.map(r=>r.hub).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  $("hf").innerHTML='<option value="">All Hubs</option>'+hubs.map(h=>`<option${h==curHub?" selected":""}>${esc(h)}</option>`).join("");
+  $("th").innerHTML="<tr>"+["Star ID","Name","Fawry ID","Contractor","Hub","Status","Active days","Absent days","Joined date","Last day"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
+  renderTable();
+}
+function clearAll(){$("q").value="";$("hf").value="";renderTable();$("q").focus()}
+function clearSearch(){$("q").value="";renderTable();$("q").focus()}
+function renderTable(){
+  $("clr").style.display=$("q").value?"block":"none";
+  const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
+  const list=[];
+  rows.forEach((r,i)=>{
+    if(r.st===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)))list.push([r,i]);
+  });
+  list.sort((x,y)=>y[0].active-x[0].active||x[0].absent-y[0].absent||x[0].name.localeCompare(y[0].name));
+  const total=list.length,LIMIT=20;
+  $("cnt").textContent=`Showing the top ${Math.min(LIMIT,total)} of ${total} couriers, ranked by Active days`;
+  list.length=Math.min(LIMIT,total);
+  $("tb").innerHTML=list.map(([r,i])=>{const st=r.st;const c=["online","offline","hold"].includes(st)?st:"other";
+    return`<tr data-i="${i}"><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.hub)}</td><td><span class="tag ${c}">${esc(r.status)||"—"}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.joined)}</td><td>${esc(r.last)||"—"}</td></tr>`}).join("")||'<tr><td colspan="10" class="mu">No results</td></tr>';
+}
+$("tb").addEventListener("click",e=>{
+  const tr=e.target.closest("tr[data-i]");
+  if(tr)showProfile(+tr.dataset.i);
+});
+function showProfile(i){
+  const r=rows[i];if(!r)return;
+  currentId=r.id;
+  const na=v=>v===""||v==null?"N/A":v;
+  const key=new Date().getDate()+" "+MON[new Date().getMonth()];
+  const j=dayHeads.findIndex(h=>{const m=h.match(/^(\d{1,2}) ([a-z]{3})/);return m&&(+m[1])+" "+m[2]===key});
+  const ofdToday=j>=0?r.ofd[j]:"";
+  const cards=[
+    ["Star ID",r.id],["Full Name",r.name],["Fawry ID",r.fawry],["Contractor",r.contractor],
+    ["Senior",r.senior],["Vehicle",r.vehicle],["Hub",r.hub],["Zone",r.zone],
+    ["Status",r.status],["Joined Date",r.joined],["Last Day Of Work",r.last],["Reason For Left",r.reason],
+    ["Comment",r.comment],["Active Days",r.active],["Absent Days",r.absent],
+    ["OFD (shipments today)",ofdToday,fmtDate(new Date())]
+  ];
+  $("pgrid").innerHTML=cards.map(([k,v,sub])=>`<div class="pcard"><span class="k">${k}</span><span class="v">${esc(na(v))}</span>${sub?`<span class="s">${esc(sub)}</span>`:""}</div>`).join("");
+  $("list").style.display="none";
+  $("profile").style.display="block";
+  window.scrollTo(0,0);
+}
+function closeProfile(){
+  currentId=null;
+  $("profile").style.display="none";
+  $("list").style.display="block";
+}
+load();setInterval(load,60000);
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Courier onboarding</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%233b6cf6'/%3E%3Crect%20x='13'%20y='34'%20width='10'%20height='17'%20rx='2.5'%20fill='%23fff'/%3E%3Crect%20x='27'%20y='22'%20width='10'%20height='29'%20rx='2.5'%20fill='%23fff'/%3E%3Crect%20x='41'%20y='12'%20width='10'%20height='39'%20rx='2.5'%20fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#e5e7eb;--card:#f3f4f6;--tx:#1f2937;--mu:#6b7280;--bd:#d1d5db;--pr:#4b6bdc;--ok:#16a34a;--bad:#dc2626;--wn:#d97706;--lbl:#dc2626;--accent:#3498db;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:"Segoe UI",Tahoma,Arial,sans-serif;padding:16px}
+.wrap{max-width:1300px;margin:auto}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-bottom:16px}
+h1{font-size:22px;margin:0}
+.mu{color:var(--mu);font-size:13px}
+button{background:var(--pr);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
+button.ghost{background:var(--card);color:var(--tx);border:1px solid var(--bd)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px}
+.kpi b{display:block;font-size:28px;margin-top:4px}
+h2{font-size:15px;margin:0 0 12px}
+.tools{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:14px}
+.tools input,.tools select{width:100%;padding:14px 16px;font-size:16px;border-radius:10px}
+@media(max-width:700px){.tools{grid-template-columns:1fr}}
+input,select{background:var(--card);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px;font:inherit}
+.tw{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 6px;border-bottom:1px solid var(--bd);text-align:center;vertical-align:middle;white-space:nowrap}
+th{color:var(--mu);font-weight:600}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:rgba(75,107,220,.10)}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
+.online{background:var(--ok)}.offline{background:var(--bad)}.hold{background:var(--wn)}.other{background:var(--mu)}
+.kpi small{display:block;color:var(--mu);font-size:12px;margin-top:2px}
+.up{color:var(--ok)}.down{color:var(--bad)}
+#err{color:var(--bad);display:none;margin-bottom:12px}
 .sbox{position:relative}
 .sbox input{padding-right:48px}
 .clr{display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);background:transparent;color:var(--mu);border-radius:50%;padding:6px 10px;font-size:16px;line-height:1}
