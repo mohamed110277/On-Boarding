@@ -47,9 +47,6 @@ tbody tr:hover{background:rgba(75,107,220,.10)}
 .rrow .bar{flex:1;height:12px;background:var(--bd);border-radius:6px;overflow:hidden}
 .rrow .bar i{display:block;height:100%;background:var(--bad);border-radius:6px}
 .rrow .n{width:24px;text-align:right;color:var(--mu)}
-.offlist{max-height:190px;overflow:auto;margin-top:10px;border-top:1px solid var(--bd);font-size:12px}
-.offlist>div{display:flex;justify-content:space-between;gap:10px;padding:6px 4px;border-bottom:1px solid var(--bd);cursor:pointer}
-.offlist>div:hover{background:rgba(75,107,220,.10)}
 #profile{display:none}
 #profile h2{font-size:26px;margin:14px 0 16px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
@@ -255,10 +252,9 @@ function renderOffline(){
     const mx=Math.max(...reasons.map(x=>x[1]));
     return `<div class="hubcard"><h3><span>${esc(h)}</span><span class="mu">${list.length} offline</span></h3>`
       +reasons.map(([k,c])=>`<div class="rrow"><span class="l" title="${esc(k)}">${esc(k)}</span><span class="bar"><i style="width:${c/mx*100}%"></i></span><span class="n">${c}</span></div>`).join("")
-      +`<div class="offlist">`+list.map(([r,i])=>`<div data-i="${i}"><span>${esc(r.name)}</span><span class="mu">${esc(r.reason||"Not specified")}${r.last?" · "+esc(r.last):""}</span></div>`).join("")+`</div></div>`;
+      +`</div>`;
   }).join(""):'<span class="mu">No offline couriers</span>';
 }
-$("offHubs").addEventListener("click",e=>{const d=e.target.closest("[data-i]");if(d)showProfile(+d.dataset.i)});
 function clearAll(){$("q").value="";$("hf").value="";renderTable();$("q").focus()}
 function renderTable(){
   const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
@@ -266,9 +262,17 @@ function renderTable(){
   rows.forEach((r,i)=>{
     if(r.st===s&&(!h||r.hub===h)&&(!q||[r.name,r.fawry,r.id,r.hub,r.zone,r.contractor,r.senior].join(" ").toLowerCase().includes(q)))list.push([r,i]);
   });
-  list.sort((x,y)=>y[0].active-x[0].active||x[0].absent-y[0].absent||x[0].name.localeCompare(y[0].name));
-  const total=list.length,LIMIT=20;
-  $("cnt").textContent=`Showing the top ${Math.min(LIMIT,total)} of ${total} couriers, ranked by Active days`;
+  const jkey=r=>{const j=parseJoined(r.joined);return j?j.y*10000+j.m*100+j.d:99999999};
+  let total=list.length,LIMIT=20;
+  if(s==="offline"){
+    // offline couriers: ordered by Joined date (oldest first), all of them are listed
+    list.sort((x,y)=>jkey(x[0])-jkey(y[0])||x[0].name.localeCompare(y[0].name));
+    LIMIT=total;
+    $("cnt").textContent=`Showing all ${total} offline couriers, ordered by Joined date`;
+  }else{
+    list.sort((x,y)=>y[0].active-x[0].active||x[0].absent-y[0].absent||x[0].name.localeCompare(y[0].name));
+    $("cnt").textContent=`Showing the top ${Math.min(LIMIT,total)} of ${total} couriers, ranked by Active days`;
+  }
   list.length=Math.min(LIMIT,total);
   $("tb").innerHTML=list.map(([r,i])=>{const st=r.st;const c=["online","offline","hold"].includes(st)?st:"other";
     return`<tr data-i="${i}"><td>${esc(r.id)}</td><td>${esc(r.name)}</td><td>${esc(r.fawry)}</td><td>${esc(r.contractor)}</td><td>${esc(r.hub)}</td><td><span class="tag ${c}">${esc(r.status||r.st)}</span></td><td>${r.active}</td><td>${r.absent}</td><td>${esc(r.joined)}</td><td>${esc(r.last)||"—"}</td></tr>`}).join("")||'<tr><td colspan="10" class="mu">No results</td></tr>';
