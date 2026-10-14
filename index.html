@@ -47,6 +47,8 @@ tbody tr:hover{background:rgba(75,107,220,.10)}
 .rrow .bar{flex:1;height:12px;background:var(--bd);border-radius:6px;overflow:hidden}
 .rrow .bar i{display:block;height:100%;background:var(--bad);border-radius:6px}
 .rrow .n{width:24px;text-align:right;color:var(--mu)}
+#reviewBody tr[data-i]{cursor:pointer}
+#reviewBody tr[data-i]:hover{background:rgba(75,107,220,.10)}
 #profile{display:none}
 #profile h2{font-size:26px;margin:14px 0 16px}
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
@@ -67,6 +69,10 @@ tbody tr:hover{background:rgba(75,107,220,.10)}
 <div id="list">
   <div class="kpis" id="kpis"></div>
   <div class="kpis" id="kpis2"></div>
+  <div class="card" id="reviewSec" style="display:none;margin-bottom:16px">
+    <h2 id="reviewTitle"></h2>
+    <div class="tw" id="reviewBody"></div>
+  </div>
   <div class="card">
     <h2>All couriers <span class="mu">— click a courier to open the profile</span></h2>
     <div class="tools">
@@ -239,6 +245,7 @@ function render(){
   $("th").innerHTML="<tr>"+["Star ID","Name","Fawry ID","Contractor","Hub","Status","Active days","Absent days","Joined date","Last day"].map(h=>`<th>${h}</th>`).join("")+"</tr>";
   renderTable();
   renderOffline();
+  renderReview();
 }
 function renderOffline(){
   const off=rows.map((r,i)=>[r,i]).filter(([r])=>r.st==="offline");
@@ -255,6 +262,27 @@ function renderOffline(){
       +`</div>`;
   }).join(""):'<span class="mu">No offline couriers</span>';
 }
+// Couriers whose Status disagrees with their leaving data: they explain why Offline and Left differ
+function renderReview(){
+  const a=[],b=[];
+  rows.forEach((r,i)=>{
+    const inLeft=!!(r.st0==="left"||r.last||r.leftDay);
+    if(inLeft&&r.st!=="offline")a.push([r,i]);
+    else if(!inLeft&&r.st==="offline")b.push([r,i]);
+  });
+  const leftOn=r=>{const d=dayHeads.filter((h,j)=>r.days[j]==="left");return d.length?"Left on "+d[0]+(d.length>1?" (+"+(d.length-1)+" more)":""):""};
+  const whyA=r=>[r.last&&"Last day "+r.last,r.reason&&"Reason: "+r.reason,leftOn(r)].filter(Boolean).join(" · ");
+  const whyB=r=>r.reason?"Reason: "+r.reason+" (no Last day)":"No Last day, Reason or Left day";
+  const table=(list,why)=>"<table><thead><tr><th>Name</th><th>Hub</th><th>Status</th><th>Details</th></tr></thead><tbody>"
+    +list.map(([r,i])=>`<tr data-i="${i}"><td>${esc(r.name)}</td><td>${esc(r.hub)}</td><td>${esc(r.status||r.st)}</td><td>${esc(why(r))}</td></tr>`).join("")+"</tbody></table>";
+  let html="";
+  if(a.length)html+=`<div class="mu" style="margin:4px 0">Counted in <b>Left</b> but not in <b>Offline</b> (${a.length}) — Status is not "offline", but the sheet shows they left:</div>`+table(a,whyA);
+  if(b.length)html+=`<div class="mu" style="margin:12px 0 4px">Counted in <b>Offline</b> but not in <b>Left</b> (${b.length}) — Status is "offline", but there is no leaving data:</div>`+table(b,whyB);
+  $("reviewSec").style.display=html?"block":"none";
+  $("reviewTitle").textContent="Needs review — Offline vs Left";
+  $("reviewBody").innerHTML=html;
+}
+$("reviewBody").addEventListener("click",e=>{const tr=e.target.closest("tr[data-i]");if(tr)showProfile(+tr.dataset.i)});
 function clearAll(){$("q").value="";$("hf").value="";renderTable();$("q").focus()}
 function renderTable(){
   const q=$("q").value.toLowerCase(),s=$("fs").value,h=$("hf").value;
